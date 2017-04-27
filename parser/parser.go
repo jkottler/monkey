@@ -3,6 +3,8 @@ package parser
 import (
 	"fmt"
 
+	"strconv"
+
 	"github.com/jkottler/monkey/ast"
 	"github.com/jkottler/monkey/lexer"
 	"github.com/jkottler/monkey/token"
@@ -14,6 +16,7 @@ type (
 	infixParseFn  func(ast.Expression) ast.Expression
 )
 
+// Parser is the type that parses monkey source files.
 type Parser struct {
 	l      *lexer.Lexer
 	errors []string
@@ -37,7 +40,9 @@ const (
 	CALL        // myFunction(X)
 )
 
-// Parser methods
+//  Utility methods
+
+// New creates a new Parser
 func New(l *lexer.Lexer) *Parser {
 	p := &Parser{
 		l:      l,
@@ -49,6 +54,7 @@ func New(l *lexer.Lexer) *Parser {
 
 	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
 	p.registerPrefix(token.IDENT, p.parseIdentifier)
+	p.registerPrefix(token.INT, p.parseIntegerLiteral)
 
 	return p
 }
@@ -82,10 +88,38 @@ func (p *Parser) ParseProgram() *ast.Program {
 	return program
 }
 
-func (p *Parser) parseIdentifier() ast.Expression {
-	return &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+func (p *Parser) curTokenIs(tt token.TokenType) bool {
+	return p.tokenIs(p.curToken, tt)
 }
 
+func (p *Parser) peekTokenIs(tt token.TokenType) bool {
+	return p.tokenIs(p.peekToken, tt)
+}
+
+// couldn't stand the repetition of the above functions...
+func (p *Parser) tokenIs(tok token.Token, tt token.TokenType) bool {
+	return tok.Type == tt
+}
+
+func (p *Parser) expectPeek(t token.TokenType) bool {
+	if p.peekTokenIs(t) {
+		p.nextToken()
+		return true
+	} else {
+		p.peekError(t)
+		return false
+	}
+}
+
+func (p *Parser) registerPrefix(tt token.TokenType, fn prefixParseFn) {
+	p.prefixParseFns[tt] = fn
+}
+
+func (p *Parser) registerInfix(tt token.TokenType, fn infixParseFn) {
+	p.infixParseFns[tt] = fn
+}
+
+// Parsing Methods
 func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
 	case token.LET:
@@ -95,6 +129,10 @@ func (p *Parser) parseStatement() ast.Statement {
 	default:
 		return p.parseExpressionStatement()
 	}
+}
+
+func (p *Parser) parseIdentifier() ast.Expression {
+	return &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 }
 
 func (p *Parser) parseLetStatement() *ast.LetStatement {
@@ -116,6 +154,8 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 
 	return stmt
 }
+
+// Expression Parsing
 
 func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
 	stmt := &ast.ReturnStatement{Token: p.curToken}
@@ -151,33 +191,17 @@ func (p *Parser) parseExpression(precedence int) ast.Expression {
 	return leftExp
 }
 
-func (p *Parser) curTokenIs(tt token.TokenType) bool {
-	return p.tokenIs(p.curToken, tt)
-}
+func (p *Parser) parseIntegerLiteral() ast.Expression {
+	lit := &ast.IntegerLiteral{Token: p.curToken}
 
-func (p *Parser) peekTokenIs(tt token.TokenType) bool {
-	return p.tokenIs(p.peekToken, tt)
-}
-
-// couldn't stand the repetition of the above functions...
-func (p *Parser) tokenIs(tok token.Token, tt token.TokenType) bool {
-	return tok.Type == tt
-}
-
-func (p *Parser) expectPeek(t token.TokenType) bool {
-	if p.peekTokenIs(t) {
-		p.nextToken()
-		return true
-	} else {
-		p.peekError(t)
-		return false
+	value, err := strconv.ParseInt(p.curToken.Literal, 0, 64)
+	if err != nil {
+		msg := fmt.Sprintf("unable to parse %q as integer", p.curToken.Literal)
+		p.errors = append(p.errors, msg)
+		return nil
 	}
-}
 
-func (p *Parser) registerPrefix(tt token.TokenType, fn prefixParseFn) {
-	p.prefixParseFns[tt] = fn
-}
+	lit.Value = value
 
-func (p *Parser) registerInfix(tt token.TokenType, fn infixParseFn) {
-	p.infixParseFns[tt] = fn
+	return lit
 }
