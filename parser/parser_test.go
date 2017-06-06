@@ -408,7 +408,7 @@ func testInfixExpression(t *testing.T, exp ast.Expression, left interface{},
 	}
 
 	if opExp.Operator != operator {
-		t.Errorf("Expected exp.Operator to be %s got %s", operator, opExp.operator)
+		t.Errorf("Expected exp.Operator to be %s got %s", operator, opExp.Operator)
 		return false
 	}
 
